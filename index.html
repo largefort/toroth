@@ -1,0 +1,316 @@
+<html><head><base href="https://medievalbuilder.ai/">
+<title>Medieval City Builder - Toroth</title>
+<style>
+    body, html {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        font-family: 'Merriweather', serif;
+        overflow: hidden;
+    }
+    #game-container {
+        display: flex;
+        height: 100vh;
+    }
+    #sidebar {
+        width: 200px;
+        background-color: rgba(60, 47, 47, 0.9);
+        padding: 10px;
+        color: #f0e6d2;
+        overflow-y: auto;
+        z-index: 10;
+    }
+    #main-area {
+        flex-grow: 1;
+        display: flex;
+        flex-direction: column;
+    }
+    #resource-bar {
+        height: 80px;
+        background-color: rgba(90, 77, 65, 0.9);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 0 20px;
+        z-index: 10;
+    }
+    .resource {
+        text-align: center;
+        margin: 0 10px;
+        font-size: 12px;
+        color: #f0e6d2;
+    }
+    .resource-icon {
+        width: 30px;
+        height: 30px;
+        margin-bottom: 5px;
+    }
+    #map-container {
+        flex-grow: 1;
+        position: relative;
+        overflow: hidden;
+    }
+    #map-image {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .building {
+        width: 50px;
+        height: 50px;
+        margin: 5px;
+        cursor: move;
+    }
+    #season-display {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background-color: rgba(0, 0, 0, 0.5);
+        color: white;
+        padding: 5px 10px;
+        border-radius: 5px;
+        z-index: 10;
+    }
+    #weather-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+    }
+    .cloud {
+        position: absolute;
+        width: 200px;
+        height: 120px;
+        background-image: url('cloud_transparent.png');
+        background-size: cover;
+        opacity: 0.7;
+        animation: moveCloud 120s linear infinite;
+    }
+    .cloud-shadow {
+        position: absolute;
+        width: 200px;
+        height: 120px;
+        background-color: rgba(0, 0, 0, 0.2);
+        filter: blur(10px);
+        animation: moveCloudShadow 120s linear infinite;
+    }
+    @keyframes moveCloud {
+        0% { left: -200px; }
+        100% { left: 100%; }
+    }
+    @keyframes moveCloudShadow {
+        0% { left: -180px; }
+        100% { left: calc(100% + 20px); }
+    }
+</style>
+</head>
+<body>
+<div id="game-container">
+    <div id="sidebar">
+        <h2>Buildings</h2>
+        <div id="building-list">
+            <img src="mill.png" alt="Mill" class="building" draggable="true" data-building="Mill">
+            <img src="mine.png" alt="Mine" class="building" draggable="true" data-building="Mine">
+            <img src="lumberyard.png" alt="Lumberyard" class="building" draggable="true" data-building="Lumberyard">
+            <img src="farm.png" alt="Farm" class="building" draggable="true" data-building="Farm">
+            <img src="quarry.png" alt="Quarry" class="building" draggable="true" data-building="Quarry">
+            <img src="apothecary.png" alt="Apothecary" class="building" draggable="true" data-building="Apothecary">
+            <img src="smithy.png" alt="Smithy" class="building" draggable="true" data-building="Smithy">
+            <img src="tannery.png" alt="Tannery" class="building" draggable="true" data-building="Tannery">
+            <img src="tavern.png" alt="Tavern" class="building" draggable="true" data-building="Tavern">
+        </div>
+    </div>
+    <div id="main-area">
+        <div id="resource-bar"></div>
+        <div id="map-container">
+            <img id="map-image" src="toroth_large_map.jpg" alt="Map of Toroth">
+            <div id="weather-overlay"></div>
+            <div id="season-display"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+const resources = [
+    { name: 'Grain', icon: '🌾', amount: 0, rate: 0 },
+    { name: 'Ore', icon: '⛏️', amount: 0, rate: 0 },
+    { name: 'Wood', icon: '🌳', amount: 0, rate: 0 },
+    { name: 'Vegetables', icon: '🥕', amount: 0, rate: 0 },
+    { name: 'Stone', icon: '🪨', amount: 0, rate: 0 },
+    { name: 'Herbs', icon: '🌿', amount: 0, rate: 0 },
+    { name: 'Metal', icon: '⚒️', amount: 0, rate: 0 },
+    { name: 'Leather', icon: '🥾', amount: 0, rate: 0 },
+    { name: 'Ale', icon: '🍺', amount: 0, rate: 0 }
+];
+
+const buildings = {
+    Mill: { resource: 'Grain', rate: 1 },
+    Mine: { resource: 'Ore', rate: 1 },
+    Lumberyard: { resource: 'Wood', rate: 1 },
+    Farm: { resource: 'Vegetables', rate: 1 },
+    Quarry: { resource: 'Stone', rate: 1 },
+    Apothecary: { resource: 'Herbs', rate: 1 },
+    Smithy: { resource: 'Metal', rate: 1 },
+    Tannery: { resource: 'Leather', rate: 1 },
+    Tavern: { resource: 'Ale', rate: 1 }
+};
+
+const seasons = ['Spring', 'Summer', 'Autumn', 'Winter'];
+let currentSeason = 0;
+let placedBuildings = [];
+
+function updateResourceBar() {
+    const resourceBar = document.getElementById('resource-bar');
+    resourceBar.innerHTML = '';
+    resources.forEach(resource => {
+        const resourceElement = document.createElement('div');
+        resourceElement.className = 'resource';
+        resourceElement.innerHTML = `
+            <div class="resource-icon">${resource.icon}</div>
+            <div>${resource.name}: ${resource.amount.toFixed(1)}</div>
+            <div>${resource.rate.toFixed(1)}/s</div>
+        `;
+        resourceBar.appendChild(resourceElement);
+    });
+}
+
+function updateResources() {
+    resources.forEach(resource => {
+        resource.amount += resource.rate;
+    });
+    updateResourceBar();
+}
+
+function updateSeason() {
+    const now = new Date();
+    currentSeason = Math.floor(now.getMonth() / 3) % 4;
+    document.getElementById('season-display').textContent = `Season: ${seasons[currentSeason]} (${now.toDateString()})`;
+
+    const mapImage = document.getElementById('map-image');
+    switch(currentSeason) {
+        case 0: // Spring
+            mapImage.style.filter = 'hue-rotate(0deg) saturate(1.2)';
+            break;
+        case 1: // Summer
+            mapImage.style.filter = 'hue-rotate(20deg) saturate(1.4) brightness(1.1)';
+            break;
+        case 2: // Autumn
+            mapImage.style.filter = 'hue-rotate(-20deg) saturate(1.6) brightness(0.9)';
+            break;
+        case 3: // Winter
+            mapImage.style.filter = 'hue-rotate(180deg) saturate(0.8) brightness(1.2)';
+            break;
+    }
+}
+
+function animateClouds() {
+    const weatherOverlay = document.getElementById('weather-overlay');
+    for (let i = 0; i < 5; i++) {
+        const cloudContainer = document.createElement('div');
+        cloudContainer.style.position = 'absolute';
+        cloudContainer.style.top = `${Math.random() * 100}%`;
+        cloudContainer.style.animationDelay = `${Math.random() * 60}s`;
+        
+        const cloudShadow = document.createElement('div');
+        cloudShadow.className = 'cloud-shadow';
+        
+        const cloud = document.createElement('div');
+        cloud.className = 'cloud';
+        
+        cloudContainer.appendChild(cloudShadow);
+        cloudContainer.appendChild(cloud);
+        weatherOverlay.appendChild(cloudContainer);
+    }
+}
+
+function initGame() {
+    updateResourceBar();
+    updateSeason();
+    animateClouds();
+
+    setInterval(updateResources, 1000);
+    setInterval(updateSeason, 60000);
+
+    const buildings = document.querySelectorAll('.building');
+    buildings.forEach(building => {
+        building.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('text/plain', e.target.dataset.building);
+        });
+    });
+
+    const mapContainer = document.getElementById('map-container');
+    mapContainer.addEventListener('dragover', (e) => {
+        e.preventDefault();
+    });
+
+    mapContainer.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const buildingType = e.dataTransfer.getData('text');
+        const rect = mapContainer.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        placeBuilding(buildingType, x, y);
+    });
+
+    loadGame();
+}
+
+function placeBuilding(buildingType, x, y) {
+    const building = buildings[buildingType];
+    const resourceIndex = resources.findIndex(r => r.name === building.resource);
+    resources[resourceIndex].rate += building.rate;
+
+    placedBuildings.push({ type: buildingType, x, y });
+    drawBuilding(buildingType, x, y);
+    updateResourceBar();
+    saveGame();
+}
+
+function drawBuilding(buildingType, x, y) {
+    const mapContainer = document.getElementById('map-container');
+    const buildingElement = document.createElement('img');
+    buildingElement.src = `${buildingType.toLowerCase()}.png`;
+    buildingElement.alt = buildingType;
+    buildingElement.style.position = 'absolute';
+    buildingElement.style.left = `${x - 25}px`;
+    buildingElement.style.top = `${y - 25}px`;
+    buildingElement.style.width = '50px';
+    buildingElement.style.height = '50px';
+    buildingElement.style.zIndex = '5';
+    mapContainer.appendChild(buildingElement);
+}
+
+function saveGame() {
+    const gameState = {
+        resources: resources,
+        placedBuildings: placedBuildings
+    };
+    localStorage.setItem('medievalCityBuilder', JSON.stringify(gameState));
+}
+
+function loadGame() {
+    const savedState = localStorage.getItem('medievalCityBuilder');
+    if (savedState) {
+        const gameState = JSON.parse(savedState);
+        resources = gameState.resources;
+        placedBuildings = gameState.placedBuildings;
+
+        placedBuildings.forEach(building => {
+            drawBuilding(building.type, building.x, building.y);
+        });
+
+        updateResourceBar();
+    }
+}
+
+setInterval(saveGame, 1000);
+
+window.onload = initGame;
+</script>
+</body></html>
